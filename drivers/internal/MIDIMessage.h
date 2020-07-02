@@ -92,21 +92,21 @@ public:
      * @param buf is a true MIDI message (not USBMidi message)
      * @param buf_len size of message
      */
-    void from_raw(uint8_t *buf, int buf_len)
+    void from_raw(uint8_t *buf, int buf_len, uint8_t cable_num = CABLE_NUM)
     {
-        length = buf_len + 1;
+        length = buf_len;
         if (length > MAX_MIDI_MESSAGE_SIZE) {
             // Message is too big
             length = 0;
             return;
         }
 
-        // first byte keeped for retro-compatibility
-        data[0] = CABLE_NUM | 0x08;
-
+        // copy data
         for (int i = 0; i < buf_len; i++) {
-            data[i + 1] = buf[i];
+            data[i] = buf[i];
         }
+
+        this->cable_num = cable_num;
     }
 
     // create messages
@@ -120,11 +120,10 @@ public:
     static MIDIMessage NoteOff(int key, int velocity = 127, int channel = 0)
     {
         MIDIMessage msg;
-        msg.data[0] = CABLE_NUM | 0x08;
-        msg.data[1] = 0x80 | (channel & 0x0F);
-        msg.data[2] = key & 0x7F;
-        msg.data[3] = velocity & 0x7F;
-        msg.length = 4;
+        msg.data[0] = 0x80 | (channel & 0x0F);
+        msg.data[1] = key & 0x7F;
+        msg.data[2] = velocity & 0x7F;
+        msg.length = 3;
         return msg;
     }
 
@@ -137,11 +136,10 @@ public:
     static MIDIMessage NoteOn(int key, int velocity = 127, int channel = 0)
     {
         MIDIMessage msg;
-        msg.data[0] = CABLE_NUM | 0x09;
-        msg.data[1] = 0x90 | (channel & 0x0F);
-        msg.data[2] = key & 0x7F;
-        msg.data[3] = velocity & 0x7F;
-        msg.length = 4;
+        msg.data[0] = 0x90 | (channel & 0x0F);
+        msg.data[1] = key & 0x7F;
+        msg.data[2] = velocity & 0x7F;
+        msg.length = 3;
         return msg;
     }
 
@@ -154,11 +152,10 @@ public:
     static MIDIMessage PolyphonicAftertouch(int key, int pressure, int channel = 0)
     {
         MIDIMessage msg;
-        msg.data[0] = CABLE_NUM | 0x0A;
-        msg.data[1] = 0xA0 | (channel & 0x0F);
-        msg.data[2] = key & 0x7F;
-        msg.data[3] = pressure & 0x7F;
-        msg.length = 4;
+        msg.data[0] = 0xA0 | (channel & 0x0F);
+        msg.data[1] = key & 0x7F;
+        msg.data[2] = pressure & 0x7F;
+        msg.length = 3;
         return msg;
     }
 
@@ -171,11 +168,10 @@ public:
     static MIDIMessage ControlChange(int control, int value, int channel = 0)
     {
         MIDIMessage msg;
-        msg.data[0] = CABLE_NUM | 0x0B;
-        msg.data[1] = 0xB0 | (channel & 0x0F);
-        msg.data[2] = control & 0x7F;
-        msg.data[3] = value & 0x7F;
-        msg.length = 4;
+        msg.data[0] = 0xB0 | (channel & 0x0F);
+        msg.data[1] = control & 0x7F;
+        msg.data[2] = value & 0x7F;
+        msg.length = 3;
         return msg;
     }
 
@@ -187,11 +183,10 @@ public:
     static MIDIMessage ProgramChange(int program, int channel = 0)
     {
         MIDIMessage msg;
-        msg.data[0] = CABLE_NUM | 0x0C;
-        msg.data[1] = 0xC0 | (channel & 0x0F);
-        msg.data[2] = program & 0x7F;
-        msg.data[3] = 0x00;
-        msg.length = 4;
+        msg.data[0] = 0xC0 | (channel & 0x0F);
+        msg.data[1] = program & 0x7F;
+        msg.data[2] = 0x00;
+        msg.length = 3;
         return msg;
     }
 
@@ -203,11 +198,10 @@ public:
     static MIDIMessage ChannelAftertouch(int pressure, int channel = 0)
     {
         MIDIMessage msg;
-        msg.data[0] = CABLE_NUM | 0x0D;
-        msg.data[1] = 0xD0 | (channel & 0x0F);
-        msg.data[2] = pressure & 0x7F;
-        msg.data[3] = 0x00;
-        msg.length = 4;
+        msg.data[0] = 0xD0 | (channel & 0x0F);
+        msg.data[1] = pressure & 0x7F;
+        msg.data[2] = 0x00;
+        msg.length = 3;
         return msg;
     }
 
@@ -220,11 +214,10 @@ public:
     {
         MIDIMessage msg;
         int p = pitch + 8192;    // 0 - 16383, 8192 is center
-        msg.data[0] = CABLE_NUM | 0x0E;
-        msg.data[1] = 0xE0 | (channel & 0x0F);
-        msg.data[2] = p & 0x7F;
-        msg.data[3] = (p >> 7) & 0x7F;
-        msg.length = 4;
+        msg.data[0] = 0xE0 | (channel & 0x0F);
+        msg.data[1] = p & 0x7F;
+        msg.data[2] = (p >> 7) & 0x7F;
+        msg.length = 3;
         return msg;
     }
 
@@ -242,10 +235,10 @@ public:
     * @param len SysEx data length
     * @returns A MIDIMessage
     */
-    static MIDIMessage SysEx(uint8_t *data, int len)
+    static MIDIMessage Raw(uint8_t *data, int len, uint8_t cable_num = CABLE_NUM)
     {
         MIDIMessage msg;
-        msg.from_raw(data, len);
+        msg.from_raw(data, len, cable_num);
         return msg;
     }
 
@@ -274,7 +267,7 @@ public:
     {
         MIDIMessageType message_type;
         uint8_t min_size;
-        switch ((data[1] >> 4) & 0xF) {
+        switch ((data[0] >> 4) & 0xF) {
             case 0x8:
                 // message, channel
                 // key
@@ -300,11 +293,11 @@ public:
                 // message, channel
                 // controller
                 min_size = 2;
-                if ((data[2] & 0x7F) < 120) { // standard controllers
+                if ((data[1] & 0x7F) < 120) { // standard controllers
                     message_type = ControlChangeType;
-                } else if ((data[2] & 0x7F) == 121) {
+                } else if ((data[1] & 0x7F) == 121) {
                     message_type = ResetAllControllersType;
-                } else if ((data[2] & 0x7F) == 123) {
+                } else if ((data[1] & 0x7F) == 123) {
                     message_type = AllNotesOffType;
                 } else {
                     message_type = ErrorType; // unsupported atm
@@ -354,7 +347,7 @@ public:
 
     int channel()
     {
-        return (data[1] & 0x0F);
+        return (data[0] & 0x0F);
     }
 
     /**
@@ -371,7 +364,7 @@ public:
             return -1;
         }
 
-        return data[2] & 0x7F;
+        return data[1] & 0x7F;
     }
 
     /**
@@ -387,7 +380,7 @@ public:
             return -1;
         }
 
-        return data[3] & 0x7F;
+        return data[2] & 0x7F;
     }
 
     /**
@@ -404,7 +397,7 @@ public:
             return -1;
         }
 
-        return data[3] & 0x7F;
+        return data[2] & 0x7F;
     }
 
     /**
@@ -421,9 +414,9 @@ public:
         }
 
         if (type() == PolyphonicAftertouchType) {
-            return data[3] & 0x7F;
-        } else {
             return data[2] & 0x7F;
+        } else {
+            return data[1] & 0x7F;
         }
     }
 
@@ -441,7 +434,7 @@ public:
             return -1;
         }
 
-        return data[2] & 0x7F;
+        return data[1] & 0x7F;
     }
 
     /**
@@ -456,7 +449,7 @@ public:
             return -1;
         }
 
-        return data[2] & 0x7F;
+        return data[1] & 0x7F;
     }
 
     /**
@@ -471,10 +464,11 @@ public:
             return -1;
         }
 
-        int p = ((data[3] & 0x7F) << 7) | (data[2] & 0x7F);
+        int p = ((data[2] & 0x7F) << 7) | (data[1] & 0x7F);
         return p - 8192; // 0 - 16383, 8192 is center
     }
 
+    uint8_t cable_num;
     uint8_t *data;
     uint16_t length;
 };

@@ -80,52 +80,107 @@ void USBMIDI::wait_ready()
 // write plain MIDIMessage that will be converted to USBMidi event packet
 bool USBMIDI::write(MIDIMessage m)
 {
-    _write_mutex.lock();
+    return write(m.data, m.length, m.cable_num);
+}
 
+bool USBMIDI::write(MIDIMessage * m)
+{
+    MBED_ASSERT(m != NULL);
+
+    return write(m->data, m->length, m->cable_num);
+}
+
+bool USBMIDI::write(uint8_t * &data, uint16_t length, uint8_t cable_num)
+{
+    _write_mutex.lock();
+    bool first = true;
     bool ret = true;
     // first byte keeped for retro-compatibility
-    for (int p = 1; p < m.length; p += 3) {
+    for (int p = 0; p < length; p += 3) {
         uint8_t buf[4];
         // Midi message to USBMidi event packet
-        buf[0] = m.data[1] >> 4;
-        // SysEx
+        buf[0] = data[0] >> 4;
+        // Set USB-MIDI Event type header (see USBMIDI spec)
         if (buf[0] == 0xF) {
-            if ((m.length - p) > 3) {
-                // SysEx start or continue
-                buf[0] = 0x4;
-            } else {
-                switch (m.length - p) {
-                    case 1:
-                        // SysEx end with one byte
-                        buf[0] = 0x5;
-                        break;
-                    case 2:
-                        // SysEx end with two bytes
-                        buf[0] = 0x6;
-                        break;
-                    case 3:
-                        // SysEx end with three bytes
-                        buf[0] = 0x7;
-                        break;
-                }
+            switch(data[0] & 0xF) {
+                // SysEx
+                case 0: // Start of SysEx
+                case 4: // UNDEFINED (fallback to sysex behaviour)
+                case 5: // UNDEFINED
+                case 7: // End of SysEx (should not be first byte)
+                    if ((length - p) > 3) {
+                        // SysEx start or continue
+                        buf[0] = 0x4;
+                    } else {
+                        switch (length - p) {
+                            case 1:
+                                // SysEx end with one byte
+                                buf[0] = 0x5;
+                                break;
+                            case 2:
+                                // SysEx end with two bytes
+                                buf[0] = 0x6;
+                                break;
+                            case 3:
+                                // SysEx end with three bytes
+                                buf[0] = 0x7;
+                                break;
+                        }
+                    }
+                    break;
+
+                // (two byte) System Common Messages
+                case 1: // MIDI MTC Quarter Frame
+                case 3: // Song select
+                    buf[0] = 0x2;
+                    break;
+
+                // (three byte) System Common Messages
+                case 2: // Song position pointer
+                    buf[0] = 0x3;
+                    break;
+
+                // (one byte) System Common Messages
+                case 6: // Tune Request
+                    buf[0] =  0x5; // end with 1 byte (same as sysex)
+                    break;
+
+                // (single byte) System Real-Time Messages
+                case 8: // timing clock
+                case 9: // UNDEFINED
+                case 10: // Start
+                case 11: // Continue
+                case 12: // Stop
+                case 13: // UNDEFINED
+                case 14: // Active Sensing
+                case 15: // Reset
+                    // CIN == 0xF (nothing to do)
+                    break;
+
             }
         }
-        buf[1] = m.data[p];
+        // set cable num;
+        buf[0] |= cable_num << 4;
 
-        if (p + 1 < m.length) {
-            buf[2] = m.data[p + 1];
+        // there is always 1 bytes
+        buf[1] = data[p];
+
+        // optional 2nd byte
+        if (p + 1 < length) {
+            buf[2] = data[p + 1];
         } else {
             buf[2] = 0;
         }
 
-        if (p + 2 < m.length) {
-            buf[3] = m.data[p + 2];
+        // optional 3rd byte
+        if (p + 2 < length) {
+            buf[3] = data[p + 2];
         } else {
             buf[3] = 0;
         }
 
         _flags.clear(FLAG_WRITE_DONE);
-        USBDevice::write_start(_bulk_in, buf, 4);
+        USBDevice::write_start(_bulk_in, buf, 4); // is it efficient to write only 4 bytes at the same time?
         uint32_t flags = _flags.wait_any(FLAG_WRITE_DONE | FLAG_DISCONNECT, osWaitForever, false);
         if (flags & FLAG_DISCONNECT) {
             ret = false;
@@ -138,6 +193,7 @@ bool USBMIDI::write(MIDIMessage m)
     return ret;
 }
 
+
 bool USBMIDI::readable()
 {
     lock();
@@ -149,19 +205,36 @@ bool USBMIDI::readable()
     return ret;
 }
 
-bool USBMIDI::read(MIDIMessage *m)
+
+bool USBMIDI::read(MIDIMessage &m)
+{
+    return read(m.data, m.length);
+}
+
+bool USBMIDI::read(uint8_t * &data, uint16_t &length, uint16_t maxlength)
 {
     lock();
 
     // Invalidate message
-    m->length = 0;
+    length = 0;
 
     if (!_data_ready) {
         unlock();
         return false;
     }
 
-    m->from_raw(_data, _cur_data);
+    // m.from_raw(_data, _cur_data);
+
+    if (_cur_data < maxlength){
+        length = _cur_data;
+    } else {
+        length = maxlength;
+    }
+
+    for(int i = 0; i < length; i++){
+        data[i] = _data[i];
+    }
+
     _cur_data = 0;
     _next_message();
 
@@ -327,7 +400,9 @@ void USBMIDI::_out_callback()
     _bulk_buf_size = read_finish(_bulk_out);
     _bulk_buf_pos = 0;
 
-    if (_callback && _next_message()) {
+    bool has_next = _next_message();
+
+    if (_callback && has_next) {
         _callback();
         return;
     }

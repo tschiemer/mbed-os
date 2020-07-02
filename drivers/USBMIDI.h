@@ -115,10 +115,33 @@ public:
     /**
      * Send a MIDIMessage
      *
+     * Comfort write for write(MIDIMessage::NoteOn(4)) type messages (ONLY)
+     *
      * @param m The MIDIMessage to send
      * @return true if the message was sent, false otherwise
      */
     bool write(MIDIMessage m);
+
+    /**
+     * Send a MIDIMessage
+     *
+     * @param m The MIDIMessage to send
+     * @return true if the message was sent, false otherwise
+     */
+    bool write(MIDIMessage * m);
+
+    /**
+     * Send a MIDIMessage
+     *
+     * (Actual implementation)
+     *
+     * @param data    MIDI data to send
+     * @param length  Length of MIDI data
+     * @param cable_num Legacy cable number
+     * @return true if the message was sent, false otherwise
+     */
+    bool write(uint8_t * &data, uint16_t length, uint8_t cable_num = CABLE_NUM);
+
 
     /**
      * Check if a message can be read
@@ -134,7 +157,17 @@ public:
      * @param m The MIDIMessage to fill
      * @return true if a message was read, false otherwise
      */
-    bool read(MIDIMessage *m);
+    bool read(MIDIMessage &m);
+
+    /**
+     * Read a message (into buffer)
+     *
+     * @param data    Buffer to write MIDI data into
+     * @param length  Length of read MIDI data
+     * @param maxlength Maximal length of MIDI data that can be read into buffer (buffered surplus data will be discarded)
+     * @return true if a message was read, false otherwise
+     */
+    bool read(uint8_t * &data, uint16_t &length, uint16_t maxlength = MAX_MIDI_MESSAGE_SIZE);
 
     /**
      * Attach a callback for when a MIDIEvent is received
